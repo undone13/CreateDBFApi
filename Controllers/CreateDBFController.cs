@@ -2,6 +2,7 @@ using CreateDBFApi.Classes;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Data.OleDb;
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
 namespace CreateDBFApi.Controllers
@@ -30,6 +31,8 @@ namespace CreateDBFApi.Controllers
                 return OleDbType.Date;
             else if (type.ToLower() == "boolean")
                 return OleDbType.Boolean;
+            else if (type.ToLower() == "double")
+                return OleDbType.Double;
 
 
             return OleDbType.Empty;
@@ -39,97 +42,109 @@ namespace CreateDBFApi.Controllers
         public string CreateDBF([FromBody] CreateDBFViewModel model)
         {
             string errorMessage = "DataBaseName can't be empty or null";
-            if(String.IsNullOrEmpty(model.DataBaseName))
+            if (String.IsNullOrEmpty(model.DataBaseName))
             {
                 return errorMessage;
             }
 
             List<string> commandsList = new List<string>();
-            string commands = "";
-            foreach(var row in model.Values)
+
+            string commandTable = @"CREATE TABLE " + model.DataBaseName + @" (";
+            string commandInsert = @"INSERT INTO " + model.DataBaseName + @" (";
+            string valuesString = " VALUES ()";
+            List<string> headersType = new List<string>();
+
+            foreach (var header in model.Headers)
             {
-                string command = @"INSERT INTO " + model.DataBaseName + @" (";
+                commandTable += header.ColumnName + " " + header.Type + "(" + header.Size.ToString() + "),";
+                commandInsert += header.ColumnName + ", ";
+                valuesString = valuesString.Insert(9, "?, ");
 
-                foreach (var header in model.Headers)
-                {
-                    command += (header + ", ");
-                }
-                command = command.Remove(command.Length - 2, 2);
-                command += ") VALUES(";
-
-                //foreach(var item in row)
-                //{
-                //    command += (item.Value.ToString() + ", ");
-                //}
-                //command = command.Remove(command.Length - 2, 2);
-                //command += ")";
-
-                commandsList.Add(command);
-                commands += command + "\n";
+                headersType.Add(header.Type);
             }
+            commandTable = commandTable.Remove(commandTable.Length - 1, 1);
+            commandTable += ")";
+
+            commandInsert = commandInsert.Remove(commandInsert.Length - 2, 2);
+            commandInsert += ")";
+
+            valuesString = valuesString.Remove(valuesString.Length - 3, 3);
+            valuesString += ")";
+
+            commandInsert = String.Concat(commandInsert, valuesString);
+
+            ////////////////////////////////
+            
+
             string dir = Path.Combine(_env.WebRootPath, Guid.NewGuid().ToString());
             Directory.CreateDirectory(dir);
-            string filepath = dir + "/" + model.DataBaseName;
-
-            //OleDbConnectionStringBuilder Builder = new OleDbConnectionStringBuilder()
-            //{
-            //    DataSource = "C:\\Ceva",
-            //    Provider = "VFPOLEDB.1"
-            //};
-
-            //Builder.Add("Extended Properties", "dBase III");
-
-            //foreach (var com in commandsList)
-            //{
-            //    using (OleDbConnection cn = new OleDbConnection(Builder.ConnectionString))
-            //    {
-            //        cn.Open();
-
-            //        using (OleDbCommand cmd = new OleDbCommand())
-            //        {
-            //            cmd.CommandText = @"create table facemi (FC , SER_FAC)";
-            //            cmd.Connection = cn;
-
-            //            try
-            //            {
-            //                cmd.ExecuteNonQuery();
-            //            }
-            //            catch (Exception ex)
-            //            {
-            //                return "ERROR: " + ex.Message;
-            //            }
-            //        }
-
-            //        using (OleDbCommand cmd = new OleDbCommand())
-            //        {
-            //            cmd.CommandText = com;
-            //            cmd.Connection = cn;
-
-            //            try
-            //            {
-            //                cmd.ExecuteNonQuery();
-            //            }
-            //            catch (Exception ex)
-            //            {
-            //                return "ERROR: " + ex.Message;
-            //            }
-            //        }
-            //        cn.Close();
-            //    }
-            //}
-
-            //foreach (var row in model.Values)
-            //{
-            //    string command = @"create table " + model.DataBaseName + @" (";
-            //    foreach (var header in model.Headers)
-            //    {
-            //        command += (header + ", ");
-            //    }
-            //}
+            string filepath = dir;
 
 
+            ///////////////////////////////
 
-            return commands;
+
+            OleDbConnectionStringBuilder Builder = new OleDbConnectionStringBuilder()
+            {
+                DataSource = filepath,
+                Provider = "VFPOLEDB.1"
+            };
+
+            Builder.Add("Extended Properties", "dBase III");
+
+            using (OleDbConnection cn = new OleDbConnection(Builder.ConnectionString))
+            {
+                cn.Open();
+                new OleDbCommand("set null off", cn).ExecuteNonQuery();
+
+                using (OleDbCommand cmd = new OleDbCommand())
+                {
+                    cmd.CommandText = commandTable;
+                    cmd.Connection = cn;
+
+                    try
+                    {
+                        cmd.ExecuteNonQuery();
+                    }
+                    catch (Exception ex)
+                    {
+                        return "ERROR: " + ex.Message;
+                    }
+                }
+
+                foreach (var row in model.Values)
+                {
+                    string commandString = commandInsert;
+
+                    using (OleDbCommand cmd = new OleDbCommand())
+                    {
+                        cmd.CommandText = commandString;
+                        cmd.Connection = cn;
+
+                        int index = 0;
+                        foreach (var item in row)
+                        {
+                            Debug.WriteLine("comanda: " + TypeReturn(headersType[index]).ToString());
+                            cmd.Parameters.Add(item.ColumnName, TypeReturn(headersType[index])).Value = item.Value.ToString();
+                            index++;
+                        }
+                        try
+                        {
+                            cmd.ExecuteNonQuery();
+                        }
+                        catch (Exception ex)
+                        {
+                            return "ERROR: " + ex.Message;
+                        }
+                    }
+                }
+
+
+                cn.Close();
+            }
+
+
+            return commandTable + "\n" + commandInsert;
         }
     }
 }
