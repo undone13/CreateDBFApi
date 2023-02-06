@@ -32,7 +32,7 @@ namespace CreateDBFApi.Classes
 
     public class ValueClass { 
         public string ColumnName { get; set; }
-        public Object Value { get; set; }
+        public Object? Value { get; set; }
     }
 
 }

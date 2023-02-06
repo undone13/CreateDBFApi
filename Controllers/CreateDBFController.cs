@@ -1,9 +1,12 @@
 using CreateDBFApi.Classes;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using System;
 using System.Data.OleDb;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 
 namespace CreateDBFApi.Controllers
 {
@@ -23,15 +26,15 @@ namespace CreateDBFApi.Controllers
 
         protected OleDbType TypeReturn(string type)
         {
-            if (type.ToLower() == "char")
+            if (type.ToLower().Contains("char"))
                 return OleDbType.Char;
-            else if (type.ToLower() == "numeric")
+            else if (type.ToLower().Contains("numeric"))
                 return OleDbType.Numeric;
-            else if (type.ToLower() == "date")
-                return OleDbType.Date;
-            else if (type.ToLower() == "boolean")
+            else if (type.ToLower().Contains("date"))
+                return OleDbType.DBTimeStamp;
+            else if (type.ToLower().Contains("bool"))
                 return OleDbType.Boolean;
-            else if (type.ToLower() == "double")
+            else if (type.ToLower().Contains("double"))
                 return OleDbType.Double;
 
 
@@ -83,7 +86,6 @@ namespace CreateDBFApi.Controllers
 
             ///////////////////////////////
 
-
             OleDbConnectionStringBuilder Builder = new OleDbConnectionStringBuilder()
             {
                 DataSource = filepath,
@@ -95,7 +97,6 @@ namespace CreateDBFApi.Controllers
             using (OleDbConnection cn = new OleDbConnection(Builder.ConnectionString))
             {
                 cn.Open();
-                new OleDbCommand("set null off", cn).ExecuteNonQuery();
 
                 using (OleDbCommand cmd = new OleDbCommand())
                 {
@@ -112,6 +113,8 @@ namespace CreateDBFApi.Controllers
                     }
                 }
 
+                new OleDbCommand("SET NULL OFF", cn).ExecuteNonQuery();
+
                 foreach (var row in model.Values)
                 {
                     string commandString = commandInsert;
@@ -120,13 +123,10 @@ namespace CreateDBFApi.Controllers
                     {
                         cmd.CommandText = commandString;
                         cmd.Connection = cn;
-
-                        int index = 0;
+                        
                         foreach (var item in row)
                         {
-                            Debug.WriteLine("comanda: " + TypeReturn(headersType[index]).ToString());
-                            cmd.Parameters.Add(item.ColumnName, TypeReturn(headersType[index])).Value = item.Value.ToString();
-                            index++;
+                            cmd.Parameters.Add(item.ColumnName, TypeReturn(headersType[row.IndexOf(item)])).Value = item.Value?.ToString() ?? null; 
                         }
                         try
                         {
@@ -138,7 +138,6 @@ namespace CreateDBFApi.Controllers
                         }
                     }
                 }
-
 
                 cn.Close();
             }
